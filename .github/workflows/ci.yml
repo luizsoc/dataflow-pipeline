@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel an older run of the same branch when a new commit arrives
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  AIRFLOW_VERSION: "3.3.2"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install Ruff (same version as requirements-dev.txt)
+        run: pip install "$(grep -E '^ruff==' requirements-dev.txt)"
+      - run: ruff check src dags tests
+      - run: ruff format --check src dags tests
+
+  test:
+    name: Tests (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dataflow
+          POSTGRES_PASSWORD: ci-only-password  # throwaway database, exists only during the job
+          POSTGRES_DB: dataflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dataflow -d dataflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DW_HOST: localhost
+      DW_PORT: "5432"
+      DW_DB: dataflow
+      DW_USER: dataflow
+      DW_PASSWORD: ci-only-password
+      PGPASSWORD: ci-only-password
+      # The DAG integrity test parses DAGs with a throwaway local Airflow home
+      AIRFLOW_HOME: ${{ github.workspace }}/.airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies (pinned by the official Airflow constraints)
+        run: |
+          pip install \
+            "apache-airflow==${AIRFLOW_VERSION}" \
+            -r requirements-dev.txt \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+      - name: Create the warehouse schema (same DDL as docker-compose)
+        run: |
+          for file in sql/init/*.sql; do
+            echo "Applying $file"
+            psql -v ON_ERROR_STOP=1 -h localhost -U dataflow -d dataflow -f "$file"
+          done
+
+      - name: Run tests
+        # On an empty warehouse every test runs, including the Gold layer tests
+        run: pytest -v

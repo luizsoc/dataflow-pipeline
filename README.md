@@ -1,5 +1,7 @@
 # DataFlow Pipeline
 
+[![CI](https://github.com/luizsoc/dataflow-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/luizsoc/dataflow-pipeline/actions/workflows/ci.yml)
+
 A batch data pipeline that turns one million raw retail transactions into a tested, analytics-ready
 star schema. It is built with Python, PostgreSQL and Apache Airflow on a Medallion Architecture
 (Bronze, Silver, Gold), and runs end to end with a single `docker compose up`.
@@ -335,6 +337,17 @@ docker compose exec airflow-scheduler ruff check src dags tests
 | `tests/test_dag_integrity.py` | The DAG imports without errors |
 
 Integration tests run inside a transaction that is rolled back, so they never change the warehouse.
+
+### Continuous Integration
+
+[GitHub Actions](.github/workflows/ci.yml) runs on every push to `main` and on every pull request:
+
+| Job | Steps |
+| --- | --- |
+| Lint and format | `ruff check` and `ruff format --check` |
+| Tests | Starts a PostgreSQL 16 service, applies `sql/init/`, installs Airflow 3.3.2 with its official constraints, runs the full `pytest` suite |
+
+In CI the warehouse starts empty, so all 79 tests run, including the Gold layer tests.
 The Gold tests compare whole tables, so they only run when the warehouse is empty and are skipped
 otherwise. On a warehouse with data the expected result is 69 passed, 10 skipped.
 
@@ -434,7 +447,6 @@ The main decisions and the alternatives considered are in
 
 ## Future Improvements
 
-- CI with GitHub Actions running lint and tests on every push.
 - Incremental, month-partitioned loads instead of reprocessing the whole batch.
 - SCD Type 2 on `dim_customer` to keep the history of attribute changes.
 - dbt for the Gold layer, with its tests and lineage documentation.
