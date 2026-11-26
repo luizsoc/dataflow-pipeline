@@ -1,0 +1,151 @@
+# DataFlow Pipeline: Airflow 3 (LocalExecutor) + PostgreSQL warehouse.
+# All credentials come from .env (copy .env.example). Start with: docker compose up -d
+
+# Fixed project name, so containers and volumes are named the same
+# whatever the folder is called (even with spaces or capitals).
+name: dataflow-pipeline
+
+x-airflow-common: &airflow-common
+  build: .
+  image: dataflow-airflow:latest
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER}:${AIRFLOW_DB_PASSWORD}@postgres-airflow:5432/${AIRFLOW_DB_NAME}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+    AIRFLOW__API_AUTH__JWT_ISSUER: dataflow
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Warehouse connection, used by Airflow hooks (conn_id: warehouse_db)
+    AIRFLOW_CONN_WAREHOUSE_DB: postgresql://${DW_USER}:${DW_PASSWORD}@postgres-dw:5432/${DW_DB}
+    # Warehouse settings read by src/dataflow/config.py
+    DW_HOST: postgres-dw
+    DW_PORT: "5432"
+    DW_DB: ${DW_DB}
+    DW_USER: ${DW_USER}
+    DW_PASSWORD: ${DW_PASSWORD}
+    SOURCE_URL: ${SOURCE_URL}
+    DATA_DIR: /opt/airflow/data
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./src:/opt/airflow/src
+    - ./sql:/opt/airflow/sql
+    - ./data:/opt/airflow/data
+    - ./tests:/opt/airflow/tests
+    - ./pyproject.toml:/opt/airflow/pyproject.toml:ro
+    - ./logs:/opt/airflow/logs
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on: &airflow-common-depends-on
+    postgres-airflow:
+      condition: service_healthy
+    postgres-dw:
+      condition: service_healthy
+
+services:
+  postgres-airflow:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${AIRFLOW_DB_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      POSTGRES_DB: ${AIRFLOW_DB_NAME}
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  postgres-dw:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DW_USER}
+      POSTGRES_PASSWORD: ${DW_PASSWORD}
+      POSTGRES_DB: ${DW_DB}
+    ports:
+      - "${DW_HOST_PORT:-5433}:5432"
+    volumes:
+      - dw-data:/var/lib/postgresql/data
+      # Runs once, on the first start with an empty volume
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /opt/airflow/logs /opt/airflow/data/raw
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs /opt/airflow/data
+        /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+    user: "0:0"
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  airflow-db-data:
+  dw-data:

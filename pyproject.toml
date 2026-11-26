@@ -1,0 +1,22 @@
+[project]
+name = "dataflow-pipeline"
+version = "0.1.0"
+description = "Batch ELT pipeline for retail sales data using Medallion Architecture, PostgreSQL and Apache Airflow."
+requires-python = ">=3.12"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that need the warehouse database running",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "dags", "tests"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, pep8-naming, pyupgrade, bugbear
+select = ["E", "W", "F", "I", "N", "UP", "B"]

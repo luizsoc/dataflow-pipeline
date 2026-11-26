@@ -1,0 +1,4 @@
+# Force LF so files mounted into Linux containers work on Windows checkouts
+* text=auto eol=lf
+*.xlsx binary
+*.zip binary
