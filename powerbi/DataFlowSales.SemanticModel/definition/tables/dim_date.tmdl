@@ -1,0 +1,88 @@
+/// Calendário: um dia por linha, do primeiro ao último dia com vendas. Marcada como tabela de datas.
+table dim_date
+	dataCategory: Time
+	lineageTag: 0d1e2f30-0000-4000-8000-000000000001
+
+	column date_key
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000011
+		summarizeBy: none
+		sourceColumn: date_key
+
+	column Data
+		dataType: dateTime
+		isKey
+		formatString: dd/mm/yyyy
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000012
+		summarizeBy: none
+		sourceColumn: full_date
+
+	column Ano
+		dataType: int64
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000013
+		summarizeBy: none
+		sourceColumn: year
+
+	column Trimestre
+		dataType: int64
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000014
+		summarizeBy: none
+		sourceColumn: quarter
+
+	column 'Mês (número)'
+		dataType: int64
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000015
+		summarizeBy: none
+		sourceColumn: month
+
+	column 'Nome do Mês'
+		dataType: string
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000016
+		summarizeBy: none
+		sourceColumn: month_name
+		sortByColumn: 'Mês (número)'
+
+	column 'Mês'
+		dataType: dateTime
+		formatString: mmm yyyy
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000017
+		summarizeBy: none
+		sourceColumn: month_start
+
+	column Dia
+		dataType: int64
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000018
+		summarizeBy: none
+		sourceColumn: day
+
+	column 'Dia da Semana'
+		dataType: int64
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000019
+		summarizeBy: none
+		sourceColumn: day_of_week
+
+	column 'Fim de Semana'
+		dataType: boolean
+		lineageTag: 0d1e2f30-0000-4000-8000-00000000001a
+		summarizeBy: none
+		sourceColumn: is_weekend
+
+	partition dim_date = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database(Servidor, BancoDeDados),
+				    Tabela = Fonte{[Schema = "gold", Item = "dim_date"]}[Data],
+				    // Primeiro dia do mês: eixo contínuo nos gráficos mensais
+				    ComInicioMes = Table.AddColumn(Tabela, "month_start", each Date.StartOfMonth([full_date]), type date),
+				    Tipos = Table.TransformColumnTypes(ComInicioMes, {{"date_key", Int64.Type}, {"year", Int64.Type}, {"quarter", Int64.Type}, {"month", Int64.Type}, {"day", Int64.Type}, {"day_of_week", Int64.Type}})
+				in
+				    Tipos
+

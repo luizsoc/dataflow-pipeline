@@ -28,6 +28,7 @@ star schema. It is built with Python, PostgreSQL and Apache Airflow on a Medalli
 - [Execution Instructions](#execution-instructions)
 - [Testing](#testing)
 - [Example SQL Queries](#example-sql-queries)
+- [Power BI Dashboard](#power-bi-dashboard)
 - [Project Structure](#project-structure)
 - [Design Decisions](#design-decisions)
 - [Future Improvements](#future-improvements)
@@ -412,6 +413,23 @@ Other queries:
 | `04_average_order_value.sql` | Average order value and lifetime revenue per customer | Chained CTEs, `NTILE` deciles |
 | `05_new_vs_returning_customers.sql` | New versus returning buyers per month | CTEs, first-purchase month, conditional counts |
 
+## Power BI Dashboard
+
+A four-page Power BI report on the Gold layer lives in [`powerbi/`](powerbi), saved as a
+Power BI Project (`.pbip`): the semantic model is TMDL and the report is PBIR, so every
+measure, relationship and visual is plain text and reviewable in Git. No data is committed;
+it is imported from the warehouse on refresh.
+
+![Power BI overview page](docs/images/powerbi-overview.png)
+
+- **Pages:** Overview (KPIs and monthly revenue), Products, Countries, Customers (new vs returning).
+- **Model:** the Gold star schema as-is, one-to-many relationships, `dim_date` marked as the date table, import mode.
+- **Measures:** 19 DAX measures (gross, cancelled and net revenue, cancellation rate, month-over-month growth, orders, average order value, new and returning customers). Each one follows the same rule as a query in `sql/analytics`, so the numbers can be checked against SQL.
+
+Open `powerbi/DataFlowSales.pbip` in Power BI Desktop, click **Refresh** and sign in with
+`DW_USER` / `DW_PASSWORD` from `.env` (server `localhost:5433`). Details in
+[`powerbi/README.md`](powerbi/README.md) (Portuguese).
+
 ## Project Structure
 
 ```
@@ -431,6 +449,7 @@ sql/analytics/              Example analytical queries
 tests/unit/                 Fast tests, no database
 tests/integration/          Tests against PostgreSQL, rolled back
 docs/                       Data dictionary and architecture decisions
+powerbi/                    Power BI project (TMDL model + PBIR report) on the Gold layer
 scripts/generate-env.ps1    Creates .env with random secrets on Windows
 ```
 
@@ -451,4 +470,4 @@ The main decisions and the alternatives considered are in
 - SCD Type 2 on `dim_customer` to keep the history of attribute changes.
 - dbt for the Gold layer, with its tests and lineage documentation.
 - Parquet in object storage (S3) and Spark for much larger volumes.
-- A dashboard (e.g. Metabase) on top of the Gold layer.
+- Publish the Power BI report to the Power BI service with scheduled refresh.

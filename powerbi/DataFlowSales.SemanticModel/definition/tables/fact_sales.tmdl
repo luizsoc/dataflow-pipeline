@@ -1,0 +1,220 @@
+/// Fato de vendas. Grão: uma linha de nota fiscal. Cancelamentos têm quantity e line_total negativos.
+table fact_sales
+	lineageTag: 0d1e2f30-0000-4000-8000-000000000005
+
+	/// Vendas sem cancelamentos (o que entrou de pedido).
+	measure 'Receita Bruta' = CALCULATE ( SUM ( fact_sales[line_total] ), fact_sales[is_cancellation] = FALSE () )
+		formatString: \£#,0
+		displayFolder: 1. Receita
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000101
+
+	/// Valor devolvido em notas canceladas, mostrado como número positivo.
+	measure 'Receita Cancelada' = - CALCULATE ( SUM ( fact_sales[line_total] ), fact_sales[is_cancellation] = TRUE () )
+		formatString: \£#,0
+		displayFolder: 1. Receita
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000102
+
+	/// Bruta menos cancelada. Igual a net_revenue em sql/analytics.
+	measure 'Receita Líquida' = SUM ( fact_sales[line_total] )
+		formatString: \£#,0
+		displayFolder: 1. Receita
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000103
+
+	/// Quanto da receita bruta foi cancelada.
+	measure '% Receita Cancelada' = DIVIDE ( [Receita Cancelada], [Receita Bruta] )
+		formatString: 0.0%;-0.0%;0.0%
+		displayFolder: 1. Receita
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000104
+
+	measure 'Receita Líquida Mês Anterior' = CALCULATE ( [Receita Líquida], DATEADD ( dim_date[Data], -1, MONTH ) )
+		formatString: \£#,0
+		displayFolder: 1. Receita
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000105
+
+	/// Crescimento mês contra mês. Igual a net_growth_pct em 01_monthly_revenue.sql.
+	measure 'Crescimento MoM %' =
+			VAR Atual = [Receita Líquida]
+			VAR Anterior = [Receita Líquida Mês Anterior]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: 1. Receita
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000106
+
+	/// Participação na receita líquida total, ignorando o filtro de produto.
+	measure '% da Receita Líquida' = DIVIDE ( [Receita Líquida], CALCULATE ( [Receita Líquida], REMOVEFILTERS ( dim_product ) ) )
+		formatString: 0.00%;-0.00%;0.00%
+		displayFolder: 1. Receita
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000107
+
+	/// Notas fiscais que não são cancelamento.
+	measure Pedidos = CALCULATE ( DISTINCTCOUNT ( fact_sales[invoice_no] ), fact_sales[is_cancellation] = FALSE () )
+		formatString: #,0
+		displayFolder: 2. Pedidos
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000201
+
+	measure 'Notas Fiscais' = DISTINCTCOUNT ( fact_sales[invoice_no] )
+		formatString: #,0
+		displayFolder: 2. Pedidos
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000202
+
+	measure 'Notas Canceladas' = CALCULATE ( DISTINCTCOUNT ( fact_sales[invoice_no] ), fact_sales[is_cancellation] = TRUE () )
+		formatString: #,0
+		displayFolder: 2. Pedidos
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000203
+
+	/// Parcela das notas que são cancelamento. Igual a 03_cancellation_rate_by_country.sql.
+	measure '% Notas Canceladas' = DIVIDE ( [Notas Canceladas], [Notas Fiscais] )
+		formatString: 0.0%;-0.0%;0.0%
+		displayFolder: 2. Pedidos
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000204
+
+	/// Mesma taxa, só onde há pelo menos 100 notas (evita país com 3 notas e 33% de cancelamento).
+	measure '% Notas Canceladas (100+ notas)' = IF ( [Notas Fiscais] >= 100, [% Notas Canceladas] )
+		formatString: 0.0%;-0.0%;0.0%
+		displayFolder: 2. Pedidos
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000205
+
+	/// Receita bruta por pedido.
+	measure 'Ticket Médio' = DIVIDE ( [Receita Bruta], [Pedidos] )
+		formatString: \£#,0.00
+		displayFolder: 2. Pedidos
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000206
+
+	/// Unidades vendidas menos devolvidas. Igual a units_sold em 02_top_products.sql.
+	measure 'Unidades Líquidas' = SUM ( fact_sales[quantity] )
+		formatString: #,0
+		displayFolder: 2. Pedidos
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000207
+
+	/// Clientes identificados com pelo menos uma compra (sem cancelamentos) no período.
+	measure 'Clientes Ativos' =
+			CALCULATE (
+			    DISTINCTCOUNT ( fact_sales[customer_key] ),
+			    fact_sales[is_cancellation] = FALSE (),
+			    fact_sales[customer_key] <> -1
+			)
+		formatString: #,0
+		displayFolder: 3. Clientes
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000301
+
+	/// Clientes ativos cuja primeira compra caiu dentro do período. Mesma regra de 05_new_vs_returning_customers.sql.
+	measure 'Clientes Novos' =
+			VAR InicioPeriodo = MIN ( dim_date[date_key] )
+			VAR ClientesDoPeriodo =
+			    CALCULATETABLE (
+			        VALUES ( fact_sales[customer_key] ),
+			        fact_sales[is_cancellation] = FALSE (),
+			        fact_sales[customer_key] <> -1
+			    )
+			RETURN
+			    COUNTROWS (
+			        FILTER (
+			            ClientesDoPeriodo,
+			            CALCULATE (
+			                MIN ( fact_sales[date_key] ),
+			                ALLEXCEPT ( fact_sales, fact_sales[customer_key] ),
+			                fact_sales[is_cancellation] = FALSE ()
+			            ) >= InicioPeriodo
+			        )
+			    )
+		formatString: #,0
+		displayFolder: 3. Clientes
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000302
+
+	measure 'Clientes Recorrentes' = [Clientes Ativos] - [Clientes Novos]
+		formatString: #,0
+		displayFolder: 3. Clientes
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000303
+
+	measure '% Clientes Recorrentes' = DIVIDE ( [Clientes Recorrentes], [Clientes Ativos] )
+		formatString: 0.0%;-0.0%;0.0%
+		displayFolder: 3. Clientes
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000304
+
+	measure 'Receita por Cliente' = DIVIDE ( CALCULATE ( [Receita Bruta], fact_sales[customer_key] <> -1 ), [Clientes Ativos] )
+		formatString: \£#,0.00
+		displayFolder: 3. Clientes
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000305
+
+	column invoice_no
+		dataType: string
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000051
+		summarizeBy: none
+		sourceColumn: invoice_no
+
+	column date_key
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000052
+		summarizeBy: none
+		sourceColumn: date_key
+
+	column product_key
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000053
+		summarizeBy: none
+		sourceColumn: product_key
+
+	column customer_key
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000054
+		summarizeBy: none
+		sourceColumn: customer_key
+
+	column country_key
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000055
+		summarizeBy: none
+		sourceColumn: country_key
+
+	column quantity
+		dataType: int64
+		isHidden
+		formatString: #,0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000056
+		summarizeBy: sum
+		sourceColumn: quantity
+
+	column unit_price
+		dataType: decimal
+		isHidden
+		formatString: \£#,0.00
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000057
+		summarizeBy: none
+		sourceColumn: unit_price
+
+	column line_total
+		dataType: decimal
+		isHidden
+		formatString: \£#,0.00
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000058
+		summarizeBy: sum
+		sourceColumn: line_total
+
+	column is_cancellation
+		dataType: boolean
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000059
+		summarizeBy: none
+		sourceColumn: is_cancellation
+
+	partition fact_sales = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database(Servidor, BancoDeDados),
+				    Tabela = Fonte{[Schema = "gold", Item = "fact_sales"]}[Data],
+				    // line_key (hash de 32 caracteres) e sales_key não são usados no relatório: tirar reduz o tamanho do modelo
+				    Colunas = Table.SelectColumns(Tabela, {"invoice_no", "date_key", "product_key", "customer_key", "country_key", "quantity", "unit_price", "line_total", "is_cancellation"}),
+				    // Currency.Type = decimal fixo: soma de dinheiro sem erro de ponto flutuante
+				    Tipos = Table.TransformColumnTypes(Colunas, {{"date_key", Int64.Type}, {"product_key", Int64.Type}, {"customer_key", Int64.Type}, {"country_key", Int64.Type}, {"quantity", Int64.Type}, {"unit_price", Currency.Type}, {"line_total", Currency.Type}})
+				in
+				    Tipos
+
