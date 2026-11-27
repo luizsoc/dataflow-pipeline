@@ -420,6 +420,8 @@ Power BI Project (`.pbip`): the semantic model is TMDL and the report is PBIR, s
 measure, relationship and visual is plain text and reviewable in Git. No data is committed;
 it is imported from the warehouse on refresh.
 
+![Power BI overview page](docs/images/powerbi-overview.png)
+
 - **Pages:** Overview (KPIs and monthly revenue), Products, Countries, Customers (new vs returning).
 - **Model:** the Gold star schema as-is, one-to-many relationships, `dim_date` marked as the date table, import mode.
 - **Measures:** 19 DAX measures (gross, cancelled and net revenue, cancellation rate, month-over-month growth, orders, average order value, new and returning customers). Each one follows the same rule as a query in `sql/analytics`, so the numbers can be checked against SQL.
