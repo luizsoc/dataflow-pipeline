@@ -1,0 +1,43 @@
+/// Clientes (SCD tipo 1). customer_key = -1 é o membro "não identificado".
+table dim_customer
+	lineageTag: 0d1e2f30-0000-4000-8000-000000000003
+
+	column customer_key
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000031
+		summarizeBy: none
+		sourceColumn: customer_key
+
+	column 'ID Cliente'
+		dataType: int64
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000032
+		summarizeBy: none
+		sourceColumn: customer_id
+
+	column 'Primeira Compra'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000033
+		summarizeBy: none
+		sourceColumn: first_purchase_date
+
+	column 'Última Compra'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000034
+		summarizeBy: none
+		sourceColumn: last_purchase_date
+
+	partition dim_customer = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database(Servidor, BancoDeDados),
+				    Tabela = Fonte{[Schema = "gold", Item = "dim_customer"]}[Data],
+				    Tipos = Table.TransformColumnTypes(Tabela, {{"customer_key", Int64.Type}, {"customer_id", Int64.Type}})
+				in
+				    Tipos
+

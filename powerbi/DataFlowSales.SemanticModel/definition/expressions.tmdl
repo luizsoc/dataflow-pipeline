@@ -1,0 +1,12 @@
+/// Endereço do Postgres do warehouse, visto do Windows (porta DW_HOST_PORT do .env)
+expression Servidor = "localhost:5433" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 6f0b1a52-3d0e-4a6f-9b52-1a7c0e5d9a01
+
+	annotation PBI_ResultType = Text
+
+/// Nome do banco do warehouse (DW_DB do .env)
+expression BancoDeDados = "dataflow" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 6f0b1a52-3d0e-4a6f-9b52-1a7c0e5d9a02
+
+	annotation PBI_ResultType = Text
+

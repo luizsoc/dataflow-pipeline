@@ -1,0 +1,33 @@
+table dim_product
+	lineageTag: 0d1e2f30-0000-4000-8000-000000000002
+
+	column product_key
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000021
+		summarizeBy: none
+		sourceColumn: product_key
+
+	column 'Código'
+		dataType: string
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000022
+		summarizeBy: none
+		sourceColumn: stock_code
+
+	column Produto
+		dataType: string
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000023
+		summarizeBy: none
+		sourceColumn: description
+
+	partition dim_product = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database(Servidor, BancoDeDados),
+				    Tabela = Fonte{[Schema = "gold", Item = "dim_product"]}[Data],
+				    Tipos = Table.TransformColumnTypes(Tabela, {{"product_key", Int64.Type}})
+				in
+				    Tipos
+

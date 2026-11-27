@@ -1,0 +1,28 @@
+table dim_country
+	lineageTag: 0d1e2f30-0000-4000-8000-000000000004
+
+	column country_key
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000041
+		summarizeBy: none
+		sourceColumn: country_key
+
+	column 'País'
+		dataType: string
+		dataCategory: Country
+		lineageTag: 0d1e2f30-0000-4000-8000-000000000042
+		summarizeBy: none
+		sourceColumn: country_name
+
+	partition dim_country = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database(Servidor, BancoDeDados),
+				    Tabela = Fonte{[Schema = "gold", Item = "dim_country"]}[Data],
+				    Tipos = Table.TransformColumnTypes(Tabela, {{"country_key", Int64.Type}})
+				in
+				    Tipos
+

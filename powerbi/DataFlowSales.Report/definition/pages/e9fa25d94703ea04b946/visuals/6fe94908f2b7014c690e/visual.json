@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.1.0/schema.json",
+  "name": "6fe94908f2b7014c690e",
+  "position": {
+    "x": 646.0,
+    "y": 80,
+    "z": 7000,
+    "height": 100,
+    "width": 196.67,
+    "tabOrder": 7000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "fact_sales"
+                    }
+                  },
+                  "Property": "% Receita Cancelada"
+                }
+              },
+              "queryRef": "fact_sales.% Receita Cancelada",
+              "nativeQueryRef": "% Receita Cancelada"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true
+  }
+}
